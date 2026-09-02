@@ -1,5 +1,8 @@
-﻿using IPA;
+﻿using BeatSaberPlugin2.Diagnostics;
+using BeatSaberPlugin2.UI;
+using IPA;
 using IPA.Loader;
+using UnityEngine;
 using IpaLogger = IPA.Logging.Logger;
 
 namespace BeatSaberPlugin2;
@@ -8,6 +11,8 @@ namespace BeatSaberPlugin2;
 internal class Plugin
 {
     internal static IpaLogger Log { get; private set; } = null!;
+
+    private GameObject? _rootObject;
 
     // Methods with [Init] are called when the plugin is first loaded by IPA.
     // All the parameters are provided by IPA and are optional.
@@ -22,7 +27,14 @@ internal class Plugin
     [OnStart]
     public void OnApplicationStart()
     {
-        Log.Debug("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        _rootObject = new GameObject(nameof(BeatSaberPlugin2));
+        Object.DontDestroyOnLoad(_rootObject);
+
+        // Technical spike: confirm hand tracking poses are readable outside of gameplay.
+        // Remove once the movement recorder (later step) supersedes it.
+        _rootObject.AddComponent<XrTrackingSpike>();
+
+        _rootObject.AddComponent<ModFlowController>();
     }
 
     [OnExit]

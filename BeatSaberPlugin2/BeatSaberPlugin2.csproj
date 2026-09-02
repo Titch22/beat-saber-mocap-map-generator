@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <Import Project="BeatSaberPlugin2.csproj.user" Condition="Exists('BeatSaberPlugin2.csproj.user')"/>
+    <Import Project="BeatSaberPlugin2.csproj.user" Condition="Exists('BeatSaberPlugin2.csproj.user')" />
 
     <PropertyGroup>
         <TargetFramework>net472</TargetFramework>
@@ -19,10 +19,11 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+        <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="BeatSaberPlugin2.csproj.user" Condition="Exists('BeatSaberPlugin2.csproj.user')"/>
+        <None Include="BeatSaberPlugin2.csproj.user" Condition="Exists('BeatSaberPlugin2.csproj.user')" />
     </ItemGroup>
 
     <ItemGroup>
@@ -46,10 +47,10 @@
             <HintPath>$(BeatSaberDir)\Beat Saber_Data\Managed\Main.dll</HintPath>
             <Private>false</Private>
         </Reference>
-        <Reference Include="mscorlib"/>
-        <Reference Include="netstandard"/>
-        <Reference Include="System"/>
-        <Reference Include="System.Core"/>
+        <Reference Include="mscorlib" />
+        <Reference Include="netstandard" />
+        <Reference Include="System" />
+        <Reference Include="System.Core" />
         <Reference Include="Unity.TextMeshPro">
             <HintPath>$(BeatSaberDir)\Beat Saber_Data\Managed\Unity.TextMeshPro.dll</HintPath>
             <Private>false</Private>
@@ -74,6 +75,34 @@
             <HintPath>$(BeatSaberDir)\Beat Saber_Data\Managed\UnityEngine.UIModule.dll</HintPath>
             <Private>False</Private>
         </Reference>
+        <Reference Include="UnityEngine.XRModule">
+            <HintPath>$(BeatSaberDir)\Beat Saber_Data\Managed\UnityEngine.XRModule.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
+        <Reference Include="UnityEngine.AudioModule">
+            <HintPath>$(BeatSaberDir)\Beat Saber_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
+            <Private>false</Private>
+        </Reference>
     </ItemGroup>
+
+    <!--
+    BeatSaberModdingTools' BSMT_CopyToPlugins target only copies the main assembly + pdb by
+    default (via the @(OutputCopy) item group). Our NAudio.Wasapi dependency needs its own
+    (and NAudio.Core's) dll copied alongside it, or the plugin will fail to load with a
+    FileNotFoundException at runtime. Populating @(OutputCopy) ourselves, before BSMT's default
+    branch runs (which only kicks in when the item group is still empty), extends the default
+    behaviour instead of replacing it.
+    -->
+    <Target Name="AddNAudioToOutputCopy" BeforeTargets="BSMT_SetOutputs" DependsOnTargets="BSMT_AfterBuild">
+        <ItemGroup>
+            <OutputCopy Include="$(OutputAssemblyName).dll" OutputPath="Plugins\$(AssemblyName).dll" />
+            <OutputCopy Include="$(OutputAssemblyName).pdb" OutputPath="Plugins\$(AssemblyName).pdb"
+                        Condition="Exists('$(OutputAssemblyName).pdb') AND '$(CopyPDB)' == 'True'" />
+            <OutputCopy Include="$(OutDir)NAudio.Core.dll" OutputPath="Plugins\NAudio.Core.dll"
+                        Condition="Exists('$(OutDir)NAudio.Core.dll')" />
+            <OutputCopy Include="$(OutDir)NAudio.Wasapi.dll" OutputPath="Plugins\NAudio.Wasapi.dll"
+                        Condition="Exists('$(OutDir)NAudio.Wasapi.dll')" />
+        </ItemGroup>
+    </Target>
 
 </Project>
