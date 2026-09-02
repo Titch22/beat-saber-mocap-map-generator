@@ -1,19 +1,24 @@
 using System;
+using System.Collections;
 using System.IO;
 using System.Threading.Tasks;
+using BeatSaberMarkupLanguage;
 using BeatSaberMarkupLanguage.MenuButtons;
 using BeatSaberPlugin2.Audio;
+using BeatSaberPlugin2.Recording;
 using BeatSaberPlugin2.Util;
+using HMUI;
 using UnityEngine;
 
 namespace BeatSaberPlugin2.UI;
 
 /// <summary>
-/// Root MonoBehaviour for the mod. Wires up the main menu button, the mp3 file picker and,
-/// for now, decoding + playback of the chosen track; recording/generation states will be added
-/// in later steps.
+/// Root MonoBehaviour for the mod. Wires up the main menu button, the mp3 file picker,
+/// decoding, a pre-song countdown, and recording the player's hand movements while the song
+/// plays; map generation will be added in a later step.
 /// </summary>
 [RequireComponent(typeof(AudioSource))]
+[RequireComponent(typeof(MotionRecorder))]
 internal class ModFlowController : MonoBehaviour
 {
     internal enum State
@@ -21,10 +26,12 @@ internal class ModFlowController : MonoBehaviour
         Idle,
         FileSelected,
         Decoding,
+        CountingDown,
         Playing,
     }
 
     private const float RegistrationRetryIntervalSeconds = 1f;
+    private const int CountdownSeconds = 10;
 
     public static ModFlowController? Instance { get; private set; }
 
@@ -33,12 +40,18 @@ internal class ModFlowController : MonoBehaviour
     private MenuButton? _menuButton;
     private float _timeSinceLastRegistrationAttempt = RegistrationRetryIntervalSeconds;
     private AudioSource _audioSource = null!;
+    private MotionRecorder _motionRecorder = null!;
+    private CountdownFlowCoordinator? _countdownFlowCoordinator;
 
     private void Awake()
     {
         Instance = this;
-        _audioSource = GetComponent<AudioSource>();
+
+        // [RequireComponent] doesn't guarantee these are attached before Awake runs on this
+        // component, so fetch-or-add explicitly rather than relying on GetComponent alone.
+        _audioSource = GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
         _audioSource.playOnAwake = false;
+        _motionRecorder = GetComponent<MotionRecorder>() ?? gameObject.AddComponent<MotionRecorder>();
     }
 
     private void Update()
@@ -145,13 +158,53 @@ internal class ModFlowController : MonoBehaviour
     {
         var clipName = Path.GetFileNameWithoutExtension(path);
         var clip = AudioClipFactory.Create(clipName, pcm);
-        Plugin.Log.Info(
-            $"Decoded '{clipName}': {clip.length:F1}s, {pcm.Channels}ch @ {pcm.SampleRate}Hz. Playing...");
+        Plugin.Log.Info($"Decoded '{clipName}': {clip.length:F1}s, {pcm.Channels}ch @ {pcm.SampleRate}Hz.");
 
         _audioSource.clip = clip;
-        _audioSource.Play();
-        CurrentState = State.Playing;
+        CurrentState = State.CountingDown;
 
-        // TODO(next step): start recording hand movements in sync with _audioSource.time.
+        // Presenting our own flow coordinator over the main menu's is what hides the menu -
+        // it replaces whatever was on screen, the same way opening any BS menu (settings,
+        // song list, ...) does.
+        _countdownFlowCoordinator = BeatSaberUI.CreateFlowCoordinator<CountdownFlowCoordinator>();
+        BeatSaberUI.PresentFlowCoordinator(
+            BeatSaberUI.MainFlowCoordinator,
+            _countdownFlowCoordinator,
+            finishedCallback: null,
+            animationDirection: ViewController.AnimationDirection.Horizontal,
+            immediately: false,
+            replaceTopViewController: false);
+
+        StartCoroutine(CountdownThenPlayAndRecord());
+    }
+
+    private IEnumerator CountdownThenPlayAndRecord()
+    {
+        for (var remaining = CountdownSeconds; remaining > 0; remaining--)
+        {
+            _countdownFlowCoordinator!.CountdownView.SetText(
+                $"Musique dans {remaining}...\nPrépare-toi à agiter les bras en rythme !");
+            yield return new WaitForSeconds(1f);
+        }
+
+        // Start playback and recording on the same frame so the recorded poses stay aligned
+        // with AudioSource.time from the very first sample.
+        _audioSource.Play();
+        _motionRecorder.StartRecording(_audioSource);
+        CurrentState = State.Playing;
+        _countdownFlowCoordinator!.CountdownView.SetText("Enregistrement en cours...");
+
+        // TODO(next step): generate the map from the samples instead of just logging them.
+        yield return new WaitUntil(() => !_motionRecorder.IsRecording);
+
+        _countdownFlowCoordinator!.CountdownView.SetText("Terminé !");
+        BeatSaberUI.DismissFlowCoordinator(
+            BeatSaberUI.MainFlowCoordinator,
+            _countdownFlowCoordinator,
+            finishedCallback: null,
+            animationDirection: ViewController.AnimationDirection.Horizontal,
+            immediately: false);
+        _countdownFlowCoordinator = null;
+        CurrentState = State.Idle;
     }
 }

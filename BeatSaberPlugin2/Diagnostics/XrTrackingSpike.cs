@@ -25,8 +25,8 @@ internal class XrTrackingSpike : MonoBehaviour
         }
 
         _timeSinceLastLog = 0f;
-        LogHandPose(XRNode.LeftHand, "LeftHand");
-        LogHandPose(XRNode.RightHand, "RightHand");
+        // LogHandPose(XRNode.LeftHand, "LeftHand");
+        // LogHandPose(XRNode.RightHand, "RightHand");
     }
 
     private static void LogHandPose(XRNode node, string label)
