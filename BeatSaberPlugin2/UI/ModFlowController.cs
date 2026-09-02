@@ -22,6 +22,7 @@ namespace BeatSaberPlugin2.UI;
 /// </summary>
 [RequireComponent(typeof(AudioSource))]
 [RequireComponent(typeof(MotionRecorder))]
+[RequireComponent(typeof(SaberVisuals))]
 internal class ModFlowController : MonoBehaviour
 {
     internal enum State
@@ -44,6 +45,7 @@ internal class ModFlowController : MonoBehaviour
     private float _timeSinceLastRegistrationAttempt = RegistrationRetryIntervalSeconds;
     private AudioSource _audioSource = null!;
     private MotionRecorder _motionRecorder = null!;
+    private SaberVisuals _saberVisuals = null!;
     private CountdownFlowCoordinator? _countdownFlowCoordinator;
     private string _currentSongName = "song";
     private PcmAudio? _currentPcm;
@@ -57,6 +59,7 @@ internal class ModFlowController : MonoBehaviour
         _audioSource = GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
         _audioSource.playOnAwake = false;
         _motionRecorder = GetComponent<MotionRecorder>() ?? gameObject.AddComponent<MotionRecorder>();
+        _saberVisuals = GetComponent<SaberVisuals>() ?? gameObject.AddComponent<SaberVisuals>();
     }
 
     private void Update()
@@ -182,6 +185,7 @@ internal class ModFlowController : MonoBehaviour
             immediately: false,
             replaceTopViewController: false);
 
+        _saberVisuals.Show();
         StartCoroutine(CountdownThenPlayAndRecord());
     }
 
@@ -250,6 +254,7 @@ internal class ModFlowController : MonoBehaviour
     {
         yield return new WaitForSeconds(delaySeconds);
 
+        _saberVisuals.Hide();
         BeatSaberUI.DismissFlowCoordinator(
             BeatSaberUI.MainFlowCoordinator,
             _countdownFlowCoordinator,
