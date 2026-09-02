@@ -1,10 +1,13 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using BeatSaberMarkupLanguage;
 using BeatSaberMarkupLanguage.MenuButtons;
 using BeatSaberPlugin2.Audio;
+using BeatSaberPlugin2.Generation;
+using BeatSaberPlugin2.LevelWriting;
 using BeatSaberPlugin2.Recording;
 using BeatSaberPlugin2.Util;
 using HMUI;
@@ -42,6 +45,8 @@ internal class ModFlowController : MonoBehaviour
     private AudioSource _audioSource = null!;
     private MotionRecorder _motionRecorder = null!;
     private CountdownFlowCoordinator? _countdownFlowCoordinator;
+    private string _currentSongName = "song";
+    private PcmAudio? _currentPcm;
 
     private void Awake()
     {
@@ -160,6 +165,8 @@ internal class ModFlowController : MonoBehaviour
         var clip = AudioClipFactory.Create(clipName, pcm);
         Plugin.Log.Info($"Decoded '{clipName}': {clip.length:F1}s, {pcm.Channels}ch @ {pcm.SampleRate}Hz.");
 
+        _currentSongName = clipName;
+        _currentPcm = pcm;
         _audioSource.clip = clip;
         CurrentState = State.CountingDown;
 
@@ -194,10 +201,55 @@ internal class ModFlowController : MonoBehaviour
         CurrentState = State.Playing;
         _countdownFlowCoordinator!.CountdownView.SetText("Enregistrement en cours...");
 
-        // TODO(next step): generate the map from the samples instead of just logging them.
         yield return new WaitUntil(() => !_motionRecorder.IsRecording);
 
-        _countdownFlowCoordinator!.CountdownView.SetText("Terminé !");
+        var swingEvents = SwingDetector.Detect(_motionRecorder.Samples);
+        SwingEventJsonWriter.Write(swingEvents, _currentSongName); // debug dump, kept for tuning
+
+        var notes = MapGenerator.Generate(swingEvents);
+        _countdownFlowCoordinator!.CountdownView.SetText(
+            $"{swingEvents.Count} mouvements détectés.\nÉcriture de la map...");
+
+        var pcm = _currentPcm!;
+        var songName = _currentSongName;
+
+        // Anything touching Unity APIs (Texture2D, Application.dataPath) must happen here, on
+        // the main thread - calling them from the background Task below doesn't just throw, it
+        // crashes the whole game.
+        var coverPng = CoverImageProvider.GeneratePlaceholderPng();
+        var gameRoot = Directory.GetParent(Application.dataPath)!.FullName;
+
+        Task.Run(() => WriteLevel(songName, pcm, notes, coverPng, gameRoot));
+    }
+
+    private void WriteLevel(string songName, PcmAudio pcm, List<GeneratedNote> notes, byte[] coverPng, string gameRoot)
+    {
+        try
+        {
+            var levelFolder = CustomLevelWriter.Write(gameRoot, songName, pcm, notes, coverPng);
+            Plugin.Log.Info($"Map générée dans '{levelFolder}' ({notes.Count} notes).");
+            MainThreadDispatcher.Enqueue(() => FinishAndReturnToMenu(
+                $"Terminé !\n{notes.Count} notes générées.\n" +
+                "Relance le jeu (ou rafraîchis les musiques) pour la jouer."));
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error($"Failed to write the custom level: {ex}");
+            MainThreadDispatcher.Enqueue(() => FinishAndReturnToMenu(
+                "Une erreur est survenue pendant l'écriture de la map (voir les logs)."));
+        }
+    }
+
+    private void FinishAndReturnToMenu(string message)
+    {
+        _countdownFlowCoordinator!.CountdownView.SetText(message);
+        StartCoroutine(DismissAfterDelay(4f));
+    }
+
+    private IEnumerator DismissAfterDelay(float delaySeconds)
+    {
+        yield return new WaitForSeconds(delaySeconds);
+
         BeatSaberUI.DismissFlowCoordinator(
             BeatSaberUI.MainFlowCoordinator,
             _countdownFlowCoordinator,

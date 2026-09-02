@@ -1,5 +1,4 @@
-﻿using BeatSaberPlugin2.Diagnostics;
-using BeatSaberPlugin2.UI;
+﻿using BeatSaberPlugin2.UI;
 using IPA;
 using IPA.Loader;
 using UnityEngine;
@@ -29,11 +28,6 @@ internal class Plugin
     {
         _rootObject = new GameObject(nameof(BeatSaberPlugin2));
         Object.DontDestroyOnLoad(_rootObject);
-
-        // Technical spike: confirm hand tracking poses are readable outside of gameplay.
-        // Remove once the movement recorder (later step) supersedes it.
-        _rootObject.AddComponent<XrTrackingSpike>();
-
         _rootObject.AddComponent<ModFlowController>();
     }
 
